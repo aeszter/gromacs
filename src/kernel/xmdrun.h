@@ -67,7 +67,8 @@ typedef struct {
 
 /* Initialization function */
 extern t_shell *init_shells(FILE *log,int start,int homenr,
-			    t_idef *idef,t_mdatoms *md,int *nshell);
+			    t_idef *idef,t_mdatoms *md,int *nshell,
+			    t_commrec *cr,bool *bShell);
 
 /* Optimize shell positions */
 extern int relax_shells(FILE *log,t_commrec *cr,t_commrec *mcr,bool bVerbose,

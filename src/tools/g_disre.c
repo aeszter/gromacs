@@ -441,10 +441,10 @@ int main (int argc,char *argv[])
 	 atoms->nres*sizeof(atoms->resname[0]));
   mdatoms = atoms2md(stdlog,&top.atoms,ir.opts.nFreeze,
 		     FALSE,0,0,NULL,FALSE,FALSE);  
-  fr      = mk_forcerec();
   fprintf(stdlog,"Made forcerec...\n");
   calc_nsb(stdlog,&(top.blocks[ebCGS]),1,nsb,0);
-  init_forcerec(stdlog,fr,&ir,&top,cr,mdatoms,nsb,box,FALSE,NULL,FALSE);
+  fr = init_forcerec(stdlog,NULL,&ir,&top,cr,mdatoms,nsb,box,
+		     FALSE,NULL,FALSE,FALSE);
   init_nrnb(&nrnb);
   j=0;
   do {

@@ -441,10 +441,10 @@ static void dump_it_all(FILE *fp,char *title,
 #endif
 }
 
-void calc_ke_part(bool bFirstStep,bool bSD,int start,int homenr,
-                  rvec vold[],rvec v[],rvec vt[],
-                  t_grpopts *opts,t_mdatoms *md,t_groups *grps,
-                  t_nrnb *nrnb,real lambda,real *dvdlambda)
+static void calc_ke_part_normal(bool bFirstStep,bool bSD,int start,int homenr,
+				rvec vold[],rvec v[],rvec vt[],
+				t_grpopts *opts,t_mdatoms *md,t_groups *grps,
+				t_nrnb *nrnb,real lambda,real *dvdlambda)
 {
   int          g,d,n,ga,gt;
   rvec         v_corrt;
@@ -516,11 +516,11 @@ void calc_ke_part(bool bFirstStep,bool bSD,int start,int homenr,
   inc_nrnb(nrnb,eNR_EKIN,homenr);
 }
 
-void calc_ke_part_visc(bool bFirstStep,int start,int homenr,
-                       matrix box,rvec x[],
-                       rvec vold[],rvec v[],rvec vt[],
-                       t_grpopts *opts,t_mdatoms *md,t_groups *grps,
-                       t_nrnb *nrnb,real lambda,real *dvdlambda)
+static void calc_ke_part_visc(bool bFirstStep,int start,int homenr,
+			      matrix box,rvec x[],
+			      rvec vold[],rvec v[],rvec vt[],
+			      t_grpopts *opts,t_mdatoms *md,t_groups *grps,
+			      t_nrnb *nrnb,real lambda,real *dvdlambda)
 {
   int          g,d,n,gt;
   rvec         v_corrt;
@@ -572,7 +572,21 @@ void calc_ke_part_visc(bool bFirstStep,int start,int homenr,
   inc_nrnb(nrnb,eNR_EKIN,homenr);
 }
 
-
+void calc_ke_part(bool bFirstStep,bool bSD,int start,int homenr,
+		  matrix box,rvec x[],
+		  rvec vold[],rvec v[],rvec vt[],
+		  t_grpopts *opts,t_mdatoms *md,t_groups *grps,
+		  t_nrnb *nrnb,real lambda,real *dvdlambda)
+{
+  if (grps->cosacc.cos_accel == 0)
+    calc_ke_part_normal(bFirstStep,bSD,start,homenr,vold,v,vt,opts,
+			md,grps,nrnb,lambda,dvdlambda);
+  else
+    calc_ke_part_visc(bFirstStep,start,homenr,box,x,vold,v,vt,opts,
+		      md,grps,nrnb,lambda,dvdlambda);
+  
+  debug_gmx();
+}
 
 void update(int          natoms,  /* number of atoms in simulation */
             int        start,

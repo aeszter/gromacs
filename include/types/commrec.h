@@ -34,6 +34,7 @@
 #endif
 
 typedef struct {
+  int npme,nreal;
   int nodeid,nnodes;
   int left,right;
   int threadid,nthreads;

@@ -477,17 +477,18 @@ static void set_bham_b_max(FILE *log,t_forcerec *fr,t_mdatoms *mdatoms)
 	  bmin,fr->bham_b_max);
 }
 
-void init_forcerec(FILE *fp,
-		   t_forcerec *fr,
-		   t_inputrec *ir,
-		   t_topology *top,
-		   t_commrec  *cr,
-		   t_mdatoms  *mdatoms,
-		   t_nsborder *nsb,
-		   matrix     box,
-		   bool       bMolEpot,
-		   char       *tabfn,
-		   bool       bNoSolvOpt)
+t_forcerec *init_forcerec(FILE *fp,
+			  t_forcerec *fr,
+			  t_inputrec *ir,
+			  t_topology *top,
+			  t_commrec  *cr,
+			  t_mdatoms  *mdatoms,
+			  t_nsborder *nsb,
+			  matrix     box,
+			  bool       bMolEpot,
+			  char       *tabfn,
+			  bool       bNoSolvOpt,
+			  bool       bSepDVDL)
 {
   int     i,j,m,natoms,ngrp,tabelemsize;
   real    q,zsq,nrdf,T;
@@ -496,9 +497,12 @@ void init_forcerec(FILE *fp,
   t_block *mols,*cgs;
   t_idef  *idef;
 
+  if (fr == NULL)
+    fr = mk_forcerec();
+      
   if (check_box(box))
     fatal_error(0,check_box(box));
-
+  
   cgs            = &(top->blocks[ebCGS]);
   mols           = &(top->blocks[ebMOLS]);
   idef           = &(top->idef);
@@ -760,6 +764,8 @@ void init_forcerec(FILE *fp,
   }
   if (!fr->mno_index)
     check_solvent(fp,top,fr,mdatoms,nsb);
+  
+  return fr;
 }
  
 #define pr_real(fp,r) fprintf(fp,"%s: %e\n",#r,r)

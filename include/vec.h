@@ -256,6 +256,17 @@ static inline void copy_rvec(const rvec a,rvec b)
   b[ZZ]=a[ZZ];
 }
 
+static inline void copy_rvecs(int n,rvec a[],rvec b[])
+{
+  int i;
+  
+  for(i=0; (i<n); i++) {
+    b[i][XX]=a[i][XX];
+    b[i][YY]=a[i][YY];
+    b[i][ZZ]=a[i][ZZ];
+  }
+}
+
 static inline void copy_ivec(const ivec a,ivec b)
 {
   b[XX]=a[XX];

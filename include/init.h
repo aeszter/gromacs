@@ -94,7 +94,8 @@ extern void init_parts(FILE *log,t_commrec *cr,
 		       rvec **x,rvec **v,t_mdatoms **mdatoms,
 		       t_nsborder *nsb,int list,
 		       bool *bParallelDummies,
-		       t_comm_dummies *dummycomm);
+		       t_comm_dummies *dummycomm,
+		       bool bSplit);
      /*
       * Loads the data for a simulation from the ring. Parameters, topology
       * coordinates, velocities, and masses are initialised equal to using

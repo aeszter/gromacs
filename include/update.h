@@ -78,6 +78,7 @@ extern void update(int          natoms,	/* number of atoms in simulation */
 /* Return TRUE if OK, FALSE in case of Shake Error */
      
 extern void calc_ke_part(bool bFirstStep,bool bSD,int start,int homenr,
+			 matrix box,rvec x[],
 			 rvec vold[],rvec v[],rvec vt[],
 			 t_grpopts *opts,t_mdatoms *md,
 			 t_groups *grps,t_nrnb *nrnb,
@@ -121,10 +122,7 @@ extern void init_sd_consts(int ngtc,real tau_t[],real dt);
  */
 extern real run_aver(real old,real cur,int step,int nmem);
 
-extern void berendsen_tcoupl(t_grpopts *opts,t_groups *grps,
-			     real dt,real SAfactor);
-extern void nosehoover_tcoupl(t_grpopts *opts,t_groups *grps,
-			      real dt,real SAfactor);
+extern void do_tcoupl(t_parm *parm,t_groups *grps,real SAfactor);
 /* Compute temperature scaling. For Nose-Hoover it is done in update. */
 
 extern real calc_temp(real ekin,real nrdf);

@@ -403,7 +403,7 @@ void do_shakefirst(FILE *log,bool bTYZ,real lambda,real ener[],
   real   dt=parm->ir.delta_t;
   real   dt_1;
 
-  if (count_constraints(top,cr)) {
+  if (parm->ir.bUncStart && (count_constraints(top,cr))) {
     start  = START(nsb);
     homenr = HOMENR(nsb);
     end    = start+homenr;
@@ -471,6 +471,7 @@ void do_shakefirst(FILE *log,bool bTYZ,real lambda,real ener[],
 	v[i][m] -= vcm[m];
     }
   }
+  debug_gmx();
 }
 
 void calc_dispcorr(FILE *log,int eDispCorr,t_forcerec *fr,int natoms,
@@ -518,14 +519,17 @@ void calc_dispcorr(FILE *log,int eDispCorr,t_forcerec *fr,int natoms,
 void do_pbc_first(FILE *log,t_parm *parm,rvec box_size,t_forcerec *fr,
 		  t_graph *graph,rvec x[])
 {
-  fprintf(log,"Removing pbc first time\n");
-  calc_shifts(parm->box,box_size,fr->shift_vec);
-  mk_mshift(log,graph,parm->box,x);
-  if (getenv ("NOPBC") == NULL)
-    shift_self(graph,parm->box,x);
-  else
+  if (fr->ePBC != epbcNONE) {
+    fprintf(log,"Removing pbc first time\n");
+    calc_shifts(parm->box,box_size,fr->shift_vec);
+    mk_mshift(log,graph,parm->box,x);
+    if (getenv ("NOPBC") == NULL)
+      shift_self(graph,parm->box,x);
+    else
     fprintf(log,"Not doing first shift_self\n");
-  fprintf(log,"Done rmpbc\n");
+    fprintf(log,"Done rmpbc\n");
+  }
+  debug_gmx();
 }
 
 void set_pot_bools(t_inputrec *ir,t_topology *top,
@@ -539,12 +543,22 @@ void set_pot_bools(t_inputrec *ir,t_topology *top,
 
 void finish_run(FILE *log,t_commrec *cr,char *confout,
 		t_nsborder *nsb,t_topology *top,t_parm *parm,
-		t_nrnb nrnb[],double nodetime,double realtime,int step,
-		bool bWriteStat)
+		t_nrnb nrnb[],int step,bool bWriteStat,time_t start_t)
 {
+  double nodetime=0,realtime;
   int    i,j;
   t_nrnb ntot;
   real   runtime;
+  
+  /* Some timing stats */  
+  if (MASTER(cr)) {
+    realtime=difftime(time(NULL),start_t);
+    if ((nodetime=node_time()) == 0)
+      nodetime=realtime;
+  }
+  else 
+    realtime=0;
+    
   for(i=0; (i<eNRNB); i++)
     ntot.n[i]=0;
   for(i=0; (i<nsb->nnodes); i++)
@@ -566,6 +580,9 @@ void finish_run(FILE *log,t_commrec *cr,char *confout,
     if (nsb->nnodes > 1)
       pr_load(log,nsb->nnodes,nrnb);
   }
+  
+  /* Does what it says */  
+  print_date_and_time(stdlog,cr->nodeid,"Finished mdrun");
 }
 
 void init_md(t_commrec *cr,t_inputrec *ir,tensor box,real *t,real *t0,
@@ -641,5 +658,6 @@ void init_md(t_commrec *cr,t_inputrec *ir,tensor box,real *t,real *t0,
   if (ir->eI == eiSD)
     init_sd_consts(ir->opts.ngtc,ir->opts.tau_t,ir->delta_t);
 
+  debug_gmx();
 }
 

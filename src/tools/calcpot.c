@@ -257,9 +257,8 @@ void init_calcpot(int nfile,t_filenm fnm[],t_topology *top,
   parm->ir.rvdw_switch = 0.0;
     
   /* Initiate forcerecord */
-  *fr = mk_forcerec();
-  init_forcerec(stdlog,*fr,&(parm->ir),top,cr,*mdatoms,
-		nsb,parm->box,FALSE,NULL,TRUE);
+  *fr = init_forcerec(stdlog,NULL,&(parm->ir),top,cr,*mdatoms,
+		      nsb,parm->box,FALSE,NULL,TRUE,FALSE);
 
   /* Remove periodicity */  
   for(m=0; (m<DIM); m++)

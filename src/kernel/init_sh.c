@@ -54,11 +54,12 @@ static void pr_shell(FILE *log,int ns,t_shell s[])
 }
 
 t_shell *init_shells(FILE *log,int start,int homenr,
-		     t_idef *idef,t_mdatoms *md,int *nshell)
+		     t_idef *idef,t_mdatoms *md,int *nshell,
+		     t_commrec *cr,bool *bShell)
 {
   t_shell     *shell=NULL;
   int         *shell_index;
-  int         n[eptNR],ns,nsi;
+  int         n[eptNR],ns,nsi,nstot;
   int         i,j,type,ftype,nra;
   int         pt1,pt2,a1,a2;
   bool        bS1,bS2;
@@ -187,6 +188,12 @@ t_shell *init_shells(FILE *log,int start,int homenr,
     if (debug)
       pr_shell(debug,ns,shell);
   }
+  
+  nstot = *nshell;
+  if (PAR(cr))
+    gmx_sumi(1,&nstot,cr);
+  *bShell = (nstot > 0);
+  
   return shell;
 }
 

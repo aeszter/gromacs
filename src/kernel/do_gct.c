@@ -60,6 +60,7 @@ t_coupl_rec *init_coupling(FILE *log,int nfile,t_filenm fnm[],
   
   snew(tcr,1);
   if (MASTER(cr)) {
+    fprintf(stderr,"Will do General Coupling Theory!\n");
     read_gct (opt2fn("-j",nfile,fnm), tcr);
     write_gct(opt2fn("-jo",nfile,fnm),tcr,idef);
   }
@@ -68,7 +69,10 @@ t_coupl_rec *init_coupling(FILE *log,int nfile,t_filenm fnm[],
   /* Update all processors with coupling info */
   if (PAR(cr))
     comm_tcr(log,cr,&tcr);
-  
+ 
+  fprintf(log,"Done init_coupling\n"); 
+  fflush(log);
+    
   return tcr;
 }
 

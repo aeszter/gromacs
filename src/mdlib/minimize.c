@@ -883,10 +883,7 @@ time_t do_nm(FILE *log,t_commrec *cr,int nfile,t_filenm fnm[],
 
   /* Calculate Temperature coupling parameters lambda */
   ener[F_TEMP]=sum_ekin(&(parm->ir.opts),grps,parm->ekin,bTYZ);
-  if(parm->ir.etc==etcBERENDSEN)
-    berendsen_tcoupl(&(parm->ir.opts),grps,parm->ir.delta_t,lam0);
-  else if(parm->ir.etc==etcNOSEHOOVER)
-    nosehoover_tcoupl(&(parm->ir.opts),grps,parm->ir.delta_t,lam0);
+  do_tcoupl(parm,grps,lam0);
 
   where();
   

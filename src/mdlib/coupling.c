@@ -337,8 +337,8 @@ void berendsen_pcoupl(t_inputrec *ir,int step,tensor pres,
     }
 }
 
-void berendsen_tcoupl(t_grpopts *opts,t_groups *grps,
-		      real dt,real SAfactor)
+static void berendsen_tcoupl(t_grpopts *opts,t_groups *grps,
+			     real dt,real SAfactor)
 {
   int    i;
   real   T,reft=0,lll; 
@@ -360,8 +360,8 @@ void berendsen_tcoupl(t_grpopts *opts,t_groups *grps,
   }
 }
 
-void nosehoover_tcoupl(t_grpopts *opts,t_groups *grps,
-		       real dt,real SAfactor)
+static void nosehoover_tcoupl(t_grpopts *opts,t_groups *grps,
+			      real dt,real SAfactor)
 {
   static real *Qinv=NULL;
   int    i;
@@ -384,4 +384,14 @@ void nosehoover_tcoupl(t_grpopts *opts,t_groups *grps,
     grps->tcstat[i].xi += dt*Qinv[i]*(grps->tcstat[i].T-reft);
   }
 }
-  
+
+void do_tcoupl(t_parm *parm,t_groups *grps,real SAfactor)
+{  
+  if(parm->ir.etc==etcBERENDSEN)
+    berendsen_tcoupl(&(parm->ir.opts),grps,
+		     parm->ir.delta_t,SAfactor);
+  else if(parm->ir.etc==etcNOSEHOOVER)
+    nosehoover_tcoupl(&(parm->ir.opts),grps,
+		      parm->ir.delta_t,SAfactor);
+  debug_gmx();
+}

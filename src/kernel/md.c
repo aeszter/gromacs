@@ -74,14 +74,23 @@ static RETSIGTYPE signal_handler(int n)
   }
 }
 
-
+static bool check_for_dummies(t_topology *top)
+{
+  int i;
+  bool bDummies=FALSE;
+  
+  for(i=0; (i<F_NRE) && !bDummies; i++)
+    bDummies = ((interaction_function[i].flags & IF_DUMMY) && 
+		(top->idef.il[i].nr > 0));
+  
+  return bDummies;
+}
 
 void mdrunner(t_commrec *cr,t_commrec *mcr,int nfile,t_filenm fnm[],
 	      bool bVerbose,bool bCompact,
 	      int nDlb,int nstepout,t_edsamyn *edyn,
 	      unsigned long Flags)
 {
-  double     nodetime=0,realtime;
   t_parm     *parm;
   rvec       *buf,*f,*vold,*v,*vt,*x,box_size;
   real       tmpr1,tmpr2;
@@ -95,7 +104,7 @@ void mdrunner(t_commrec *cr,t_commrec *mcr,int nfile,t_filenm fnm[],
   t_forcerec *fr;
   t_fcdata   *fcd;
   time_t     start_t=0;
-  bool       bDummies,bParDummies;
+  bool       bDummies,bParDummies,bSplit,bPMEnode;
   t_comm_dummies dummycomm;
   int        i,m;
   char       *gro;
@@ -121,10 +130,18 @@ void mdrunner(t_commrec *cr,t_commrec *mcr,int nfile,t_filenm fnm[],
 		       ftp2fn(efTPX,nfile,fnm),nDlb);
     
     /* Every node (including the master) reads the data from the ring */
+    bSplit = FALSE;
     init_parts(stdlog,cr,
 	       parm,top,&x,&v,&mdatoms,nsb,
 	       MASTER(cr) ? LIST_SCALARS | LIST_PARM : 0, 
-	       &bParDummies,&dummycomm);
+	       &bParDummies,&dummycomm,bSplit);
+    
+    /* Real stuff happening here! */
+    if (parm->ir.coulombtype == eelPME) {
+      cr->npme  = 1+cr->nnodes/4;
+      cr->nreal = cr->nnodes-cr->npme;
+    }
+    
   } else {
     /* Read it up... */
     init_single(stdlog,parm,ftp2fn(efTPX,nfile,fnm),top,&x,&v,&mdatoms,nsb);
@@ -138,19 +155,20 @@ void mdrunner(t_commrec *cr,t_commrec *mcr,int nfile,t_filenm fnm[],
   if (bVerbose && MASTER(cr))
     fprintf(stderr,"Loaded with Money\n\n");
   
+  bPMEnode = ((cr->nnodes > 1) && (cr->nodeid < cr->npme));
+  
   /* Index numbers for parallellism... */
   nsb->nodeid      = cr->nodeid;
   top->idef.nodeid = cr->nodeid;
 
   /* Group stuff (energies etc) */
   init_groups(stdlog,mdatoms,&(parm->ir.opts),grps);
+  
   /* Copy the cos acceleration to the groups struct */
   grps->cosacc.cos_accel = parm->ir.cos_accel;
   
   /* Periodicity stuff */  
   graph=mk_graph(&(top->idef),top->atoms.nr,FALSE,FALSE);
-  if (debug)
-    p_graph(debug,"Initial graph",graph);
   
   /* Distance Restraints */
   init_disres(stdlog,top->idef.il[F_DISRES].nr,top->idef.il[F_DISRES].iatoms,
@@ -159,27 +177,25 @@ void mdrunner(t_commrec *cr,t_commrec *mcr,int nfile,t_filenm fnm[],
   /* Orientation restraints */
   init_orires(stdlog,top->idef.il[F_ORIRES].nr,top->idef.il[F_ORIRES].iatoms,
 	      top->idef.iparams,x,mdatoms,&(parm->ir),mcr,fcd);
-
+  
   /* check if there are dummies */
-  bDummies=FALSE;
-  for(i=0; (i<F_NRE) && !bDummies; i++)
-    bDummies = ((interaction_function[i].flags & IF_DUMMY) && 
-		(top->idef.il[i].nr > 0));
-
+  bDummies = check_for_dummies(top);
+  
   /* Initiate forcerecord */
-  fr = mk_forcerec();
-  init_forcerec(stdlog,fr,&(parm->ir),top,cr,mdatoms,nsb,parm->box,FALSE,
-		opt2fn("-table",nfile,fnm),FALSE);
-  fr->bSepDVDL = ((Flags & MD_SEPDVDL) == MD_SEPDVDL);
+  fr = init_forcerec(stdlog,NULL,&(parm->ir),top,cr,mdatoms,nsb,
+		     parm->box,FALSE,opt2fn("-table",nfile,fnm),FALSE,
+		     ((Flags & MD_SEPDVDL) == MD_SEPDVDL));
+		     
   /* Initiate box */
   for(m=0; (m<DIM); m++)
     box_size[m]=parm->box[m][m];
-    
+  
   /* Initiate PPPM if necessary */
   if (fr->eeltype == eelPPPM)
     init_pppm(stdlog,cr,nsb,FALSE,TRUE,box_size,getenv("GMXGHAT"),&parm->ir);
   if (fr->eeltype == eelPME)
-    init_pme(stdlog,cr,parm->ir.nkx,parm->ir.nky,parm->ir.nkz,parm->ir.pme_order,
+    init_pme(stdlog,cr,parm->ir.nkx,parm->ir.nky,parm->ir.nkz,
+	     parm->ir.pme_order,
 	     HOMENR(nsb),parm->ir.bOptFFT,parm->ir.ewald_geometry);
   
   /* Now do whatever the user wants us to do (how flexible...) */
@@ -217,27 +233,66 @@ void mdrunner(t_commrec *cr,t_commrec *mcr,int nfile,t_filenm fnm[],
     fatal_error(0,"Invalid integrator (%d)...\n",parm->ir.eI);
   }
   
-    /* Some timing stats */  
-  if (MASTER(cr)) {
-    realtime=difftime(time(NULL),start_t);
-    if ((nodetime=node_time()) == 0)
-      nodetime=realtime;
-  }
-  else 
-    realtime=0;
-    
   /* Convert back the atoms */
   md2atoms(mdatoms,&(top->atoms),TRUE);
   
-  /* Finish up, write some stuff
-   * if rerunMD, don't write last frame again 
-   */
+  /* Finish up, write some stuff. If rerunMD don't write last frame again  */
   finish_run(stdlog,cr,ftp2fn(efSTO,nfile,fnm),
-	     nsb,top,parm,nrnb,nodetime,realtime,parm->ir.nsteps,
-	     parm->ir.eI==eiMD || parm->ir.eI==eiSD || parm->ir.eI==eiBD);
+	     nsb,top,parm,nrnb,parm->ir.nsteps,
+	     parm->ir.eI==eiMD || parm->ir.eI==eiSD || parm->ir.eI==eiBD,
+	     start_t);
+}
+
+static void set_flags(unsigned long Flags,bool *bRerunMD,bool *bIonize,
+		      bool *bGlas,bool *bFFscan)
+{
+  *bRerunMD = (Flags & MD_RERUN)  == MD_RERUN;
+  *bIonize  = (Flags & MD_IONIZE) == MD_IONIZE;
+  *bGlas    = (Flags & MD_GLAS)   == MD_GLAS;
+  *bFFscan  = (Flags & MD_FFSCAN) == MD_FFSCAN;
+}
+
+static void read_dipole_stuff(int nfile,t_filenm fnm[],int *gnx,
+			      atom_id **grpindex,char **grpname,
+			      t_topology *top)
+{
+  int i;
   
-  /* Does what it says */  
-  print_date_and_time(stdlog,cr->nodeid,"Finished mdrun");
+  *grpindex = NULL;
+  *grpname  = NULL;
+  
+  if (opt2bSet("-dn",nfile,fnm))
+    rd_index(opt2fn("-dn",nfile,fnm),1,gnx,grpindex,grpname);
+  else {
+    *gnx = top->blocks[ebMOLS].nr;
+    snew(*grpindex,*gnx);
+    for(i=0; (i<*gnx); i++)
+      (*grpindex)[i] = i;
+  }
+}
+
+static void print_load_balance(FILE *fp,t_commrec *cr)
+{
+  double *ct,ctmax,ctsum;
+  int    i;
+    
+  if (PAR(cr)) {
+    snew(ct,cr->nnodes);
+    ct[cr->nodeid] = node_time();
+    gmx_sumd(cr->nnodes,ct,cr);
+    ctmax = ct[0];
+    ctsum = ct[0];
+    for(i=1; (i<cr->nodeid); i++) {
+      ctmax = max(ctmax,ct[i]);
+      ctsum += ct[i];
+    }
+    ctsum /= cr->nnodes;
+    fprintf(fp,"\nTotal NODE time on node %d: %g\n",cr->nodeid,ct[cr->nodeid]);
+    fprintf(fp,"Average NODE time: %g\n",ctsum);
+    fprintf(fp,"Load imbalance reduced performance to %3d%% of max\n",
+	    (int) (100.0*ctmax/ctsum));
+    sfree(ct);
+  }
 }
 
 time_t do_md(FILE *log,t_commrec *cr,t_commrec *mcr,int nfile,t_filenm fnm[],
@@ -260,7 +315,7 @@ time_t do_md(FILE *log,t_commrec *cr,t_commrec *mcr,int nfile,t_filenm fnm[],
   tensor     force_vir,pme_vir,shake_vir;
   t_nrnb     mynrnb;
   char       *traj,*xtc_traj; /* normal and compressed trajectory filename */
-  int        i,m,status;
+  int        i,ii,gnx,m,status;
   rvec       mu_tot;
   rvec       *xx,*vv,*ff;
   t_vcm      *vcm;
@@ -278,7 +333,6 @@ time_t do_md(FILE *log,t_commrec *cr,t_commrec *mcr,int nfile,t_filenm fnm[],
   bool        bShell,bIonize=FALSE,bGlas=FALSE;
   bool        bTCR=FALSE,bConverged=TRUE,bOK;
   real        mu_aver=0,fmax;
-  int         gnx,ii;
   atom_id     *grpindex;
   char        *grpname;
   t_coupl_rec *tcr=NULL;
@@ -290,67 +344,42 @@ time_t do_md(FILE *log,t_commrec *cr,t_commrec *mcr,int nfile,t_filenm fnm[],
   signal(SIGUSR1,signal_handler);
 
   /* Check for special mdrun options */
-  bRerunMD = (Flags & MD_RERUN)  == MD_RERUN;
-  bIonize  = (Flags & MD_IONIZE) == MD_IONIZE;
-  bGlas    = (Flags & MD_GLAS)   == MD_GLAS;
-  bFFscan  = (Flags & MD_FFSCAN) == MD_FFSCAN;
+  set_flags(Flags,&bRerunMD,&bIonize,&bGlas,&bFFscan);
+
+  /* Check whether we have to GCT stuff */
+  bTCR = ftp2bSet(efGCT,nfile,fnm);
   
   /* Initial values */
   init_md(cr,&parm->ir,parm->box,&t,&t0,&lambda,&lam0,&SAfactor,
 	  &mynrnb,&bTYZ,top,
 	  nfile,fnm,&traj,&xtc_traj,&fp_ene,&fp_dgdl,&mdebin,grps,
 	  force_vir,pme_vir,shake_vir,mdatoms,mu_tot,&bNEMD,&vcm,nsb);
-  debug_gmx();
-
+  
   /* Check for polarizable models */
-  shells     = init_shells(log,START(nsb),HOMENR(nsb),&top->idef,
-			   mdatoms,&nshell);
-  nshell_tot = nshell;
-  if (PAR(cr))
-    gmx_sumi(1,&nshell_tot,cr);
-  bShell = nshell_tot > 0;
+  shells = init_shells(log,START(nsb),HOMENR(nsb),&top->idef,
+		       mdatoms,&nshell,cr,&bShell);
   
   /* Check whether we have to do dipole stuff */
-  if (opt2bSet("-dn",nfile,fnm))
-    rd_index(opt2fn("-dn",nfile,fnm),1,&gnx,&grpindex,&grpname);
-  else {
-    gnx = top->blocks[ebMOLS].nr;
-    snew(grpindex,gnx);
-    for(i=0; (i<gnx); i++)
-      grpindex[i] = i;
-  }
-
-  /* Check whether we have to GCT stuff */
-  bTCR = ftp2bSet(efGCT,nfile,fnm);
-  if (MASTER(cr) && bTCR)
-    fprintf(stderr,"Will do General Coupling Theory!\n");
+  read_dipole_stuff(nfile,fnm,&gnx,&grpindex,&grpname,top);
 
   /* Remove periodicity */  
-  if (fr->ePBC != epbcNONE)
-    do_pbc_first(log,parm,box_size,fr,graph,x);
-  debug_gmx();
+  do_pbc_first(log,parm,box_size,fr,graph,x);
 
   /* Initialize pull code */
-  init_pull(log,nfile,fnm,&pulldata,x,mdatoms,parm->box,START(nsb), HOMENR(nsb), cr );
+  init_pull(log,nfile,fnm,&pulldata,x,mdatoms,parm->box,START(nsb), 
+	    HOMENR(nsb),cr);
   if (pulldata.bPull && PAR(cr) && pulldata.runtype==eConstraint)
     fatal_error(0,"Can not do constraint runs in parallel");
     
-  if (!parm->ir.bUncStart) 
-    do_shakefirst(log,bTYZ,lambda,ener,parm,nsb,mdatoms,x,vold,buf,f,v,
-		  graph,cr,&mynrnb,grps,fr,top,edyn,&pulldata);
-  debug_gmx();
+  do_shakefirst(log,bTYZ,lambda,ener,parm,nsb,mdatoms,x,vold,buf,f,v,
+		graph,cr,&mynrnb,grps,fr,top,edyn,&pulldata);
     
   /* Compute initial EKin for all.. */
-  if (grps->cosacc.cos_accel == 0)
-    calc_ke_part(TRUE,parm->ir.eI==eiSD,
-		 START(nsb),HOMENR(nsb),vold,v,vt,&(parm->ir.opts),
-		 mdatoms,grps,&mynrnb,lambda,&ener[F_DVDLKIN]);
-  else
-    calc_ke_part_visc(TRUE,START(nsb),HOMENR(nsb),
-		      parm->box,x,vold,v,vt,&(parm->ir.opts),
-		      mdatoms,grps,&mynrnb,lambda,&ener[F_DVDLKIN]);
-  debug_gmx();
-	
+  calc_ke_part(TRUE,parm->ir.eI==eiSD,
+	       START(nsb),HOMENR(nsb),parm->box,
+	       x,vold,v,vt,&(parm->ir.opts),
+	       mdatoms,grps,&mynrnb,lambda,&ener[F_DVDLKIN]);
+	       
   if (PAR(cr)) 
     global_stat(log,cr,ener,force_vir,shake_vir,
 		&(parm->ir.opts),grps,&mynrnb,nrnb,vcm,&terminate);
@@ -358,21 +387,14 @@ time_t do_md(FILE *log,t_commrec *cr,t_commrec *mcr,int nfile,t_filenm fnm[],
   
   /* Calculate Temperature coupling parameters lambda */
   ener[F_TEMP] = sum_ekin(&(parm->ir.opts),grps,parm->ekin,bTYZ);
-  if(parm->ir.etc==etcBERENDSEN)
-    berendsen_tcoupl(&(parm->ir.opts),grps,
-		     parm->ir.delta_t,SAfactor);
-  else if(parm->ir.etc==etcNOSEHOOVER)
-    nosehoover_tcoupl(&(parm->ir.opts),grps,
-		      parm->ir.delta_t,SAfactor);
-  debug_gmx();
+  do_tcoupl(parm,grps,SAfactor);
   
   /* Initiate data for the special cases */
   if (bFFscan) {
     snew(xcopy,nsb->natoms);
-    for(ii=0; (ii<nsb->natoms); ii++)
-      copy_rvec(x[ii],xcopy[ii]);
+    copy_rvecs(nsb->natoms,x,xcopy);
   }
-      
+  
   /* Write start time and temperature */
   start_t=print_date_and_time(log,cr->nodeid,"Started mdrun");
   
@@ -421,14 +443,11 @@ time_t do_md(FILE *log,t_commrec *cr,t_commrec *mcr,int nfile,t_filenm fnm[],
 	t = rerun_fr.time;
       else
 	t = step;
-      for(i=0; i<mdatoms->nr; i++)
-	copy_rvec(rerun_fr.x[i],x[i]);
+      copy_rvecs(mdatoms->nr,rerun_fr.x,x);
       if (rerun_fr.bV)
-	for(i=0; i<mdatoms->nr; i++)
-	  copy_rvec(rerun_fr.v[i],v[i]);
+	copy_rvecs(mdatoms->nr,rerun_fr.v,v);
       else {
-	for(i=0; i<mdatoms->nr; i++)
-	    clear_rvec(v[i]);
+	clear_rvecs(mdatoms->nr,v);
 	if (bRerunWarnNoV) {
 	  fprintf(stderr,"\nWARNING: Some frames do not contain velocities.\n"
 		  "         Ekin, temperature and pressure are incorrect,\n"
@@ -453,10 +472,8 @@ time_t do_md(FILE *log,t_commrec *cr,t_commrec *mcr,int nfile,t_filenm fnm[],
     bStopCM = do_per_step(step,abs(parm->ir.nstcomm));
 
     /* Copy back starting coordinates in case we're doing a forcefield scan */
-    if (bFFscan) {
-      for(ii=0; (ii<nsb->natoms); ii++)
-	copy_rvec(xcopy[ii],x[ii]);
-    }
+    if (bFFscan) 
+      copy_rvecs(nsb->natoms,xcopy,x);
     
     if (bDummies) {
       shift_self(graph,parm->box,x);
@@ -515,11 +532,8 @@ time_t do_md(FILE *log,t_commrec *cr,t_commrec *mcr,int nfile,t_filenm fnm[],
       do_glas(log,START(nsb),HOMENR(nsb),x,f,
 	      fr,mdatoms,top->idef.atnr,&parm->ir,ener);
     
-    if (bTCR && (step == 0)) {
+    if (bTCR && (step == 0))
       tcr=init_coupling(log,nfile,fnm,cr,fr,mdatoms,&(top->idef));
-      fprintf(log,"Done init_coupling\n"); 
-      fflush(log);
-    }
     
     /* Now we have the energies and forces corresponding to the 
      * coordinates at time t. We must output all of this before
@@ -535,11 +549,8 @@ time_t do_md(FILE *log,t_commrec *cr,t_commrec *mcr,int nfile,t_filenm fnm[],
       else
 	lambda = lam0 + step*parm->ir.delta_lambda;
     }
-    if (parm->ir.bSimAnn) {
-      SAfactor = 1.0  - t/parm->ir.zero_temp_time;
-      if (SAfactor < 0) 
-	SAfactor = 0;
-    }
+    if (parm->ir.bSimAnn)
+      SAfactor = max(0.0,1.0  - t/parm->ir.zero_temp_time);
 
     if (MASTER(cr) && do_log && !bFFscan)
       print_ebin_header(log,step,t,lambda,SAfactor);
@@ -607,7 +618,7 @@ time_t do_md(FILE *log,t_commrec *cr,t_commrec *mcr,int nfile,t_filenm fnm[],
       print_forcefield(log,ener[F_EPOT],HOMENR(nsb),f,buf,xcopy,
 		       &(top->blocks[ebMOLS]),mdatoms->massT); 
     
-    if (parm->ir.epc!=epcNO)
+    if (parm->ir.epc != epcNO)
       correct_box(parm->box,fr,graph);
     /* (un)shifting should NOT be done after this,
      * since the box vectors might have changed
@@ -619,17 +630,11 @@ time_t do_md(FILE *log,t_commrec *cr,t_commrec *mcr,int nfile,t_filenm fnm[],
     if (PAR(cr) && bNEMD) 
       accumulate_u(cr,&(parm->ir.opts),grps);
       
-    debug_gmx();
-    if (grps->cosacc.cos_accel == 0)
-      calc_ke_part(FALSE,parm->ir.eI==eiSD,
-		   START(nsb),HOMENR(nsb),vold,v,vt,&(parm->ir.opts),
-		   mdatoms,grps,&mynrnb,lambda,&ener[F_DVDLKIN]);
-    else
-      calc_ke_part_visc(FALSE,START(nsb),HOMENR(nsb),
-			parm->box,x,vold,v,vt,&(parm->ir.opts),
-			mdatoms,grps,&mynrnb,lambda,&ener[F_DVDLKIN]);
+    calc_ke_part(FALSE,parm->ir.eI==eiSD,
+		 START(nsb),HOMENR(nsb),parm->box,
+		 x,vold,v,vt,&(parm->ir.opts),
+		 mdatoms,grps,&mynrnb,lambda,&ener[F_DVDLKIN]);
 
-    debug_gmx();
     /* Calculate center of mass velocity if necessary, also parallellized */
     if (bStopCM && !bFFscan)
       calc_vcm_grp(log,START(nsb),HOMENR(nsb),mdatoms->massT,x,v,vcm);
@@ -679,7 +684,7 @@ time_t do_md(FILE *log,t_commrec *cr,t_commrec *mcr,int nfile,t_filenm fnm[],
 		   mdatoms->massT,mdatoms->tmass,parm->ekin);
     
     if ((terminate != 0) && (step < parm->ir.nsteps)) {
-      if (terminate<0 && parm->ir.nstxout)
+      if ((terminate < 0) && (parm->ir.nstxout))
 	/* this is the USR1 signal and we are writing x to trr, 
 	   stop at next x frame in trr */
 	parm->ir.nsteps = (step / parm->ir.nstxout + 1) * parm->ir.nstxout;
@@ -691,7 +696,7 @@ time_t do_md(FILE *log,t_commrec *cr,t_commrec *mcr,int nfile,t_filenm fnm[],
 	fprintf(stderr,"\nSetting nsteps to %d\n\n",parm->ir.nsteps);
 	fflush(stderr);
       }
-      /* erase the terminate signal */
+      /* Erase the terminate signal */
       terminate = 0;
     }
 
@@ -700,12 +705,6 @@ time_t do_md(FILE *log,t_commrec *cr,t_commrec *mcr,int nfile,t_filenm fnm[],
       check_cm_grp(log,vcm);
       do_stopcm_grp(log,START(nsb),HOMENR(nsb),x,v,vcm);
       inc_nrnb(&mynrnb,eNR_STOPCM,HOMENR(nsb));
-      /*
-      calc_vcm_grp(log,START(nsb),HOMENR(nsb),mdatoms->massT,x,v,vcm);
-      check_cm_grp(log,vcm);
-      do_stopcm_grp(log,START(nsb),HOMENR(nsb),x,v,vcm);
-      check_cm_grp(log,vcm);
-      */
     }
         
     /* Add force and shake contribution to the virial */
@@ -723,7 +722,7 @@ time_t do_md(FILE *log,t_commrec *cr,t_commrec *mcr,int nfile,t_filenm fnm[],
     ener[F_ETOT]=ener[F_EPOT]+ener[F_EKIN];
     
     /* Check for excessively large energies */
-    if (bIonize && fabs(ener[F_ETOT]) > 1e18) {
+    if (bIonize && (fabs(ener[F_ETOT]) > 1e18)) {
       fprintf(stderr,"Energy too large (%g), giving up\n",ener[F_ETOT]);
       break;
     }
@@ -731,11 +730,8 @@ time_t do_md(FILE *log,t_commrec *cr,t_commrec *mcr,int nfile,t_filenm fnm[],
     /* Calculate Temperature coupling parameters lambda and adjust
      * target temp when doing simulated annealing
      */
-    if(parm->ir.etc==etcBERENDSEN)
-      berendsen_tcoupl(&(parm->ir.opts),grps,parm->ir.delta_t,SAfactor);
-    else if(parm->ir.etc==etcNOSEHOOVER)
-      nosehoover_tcoupl(&(parm->ir.opts),grps,parm->ir.delta_t,SAfactor);
-
+    do_tcoupl(parm,grps,SAfactor);
+    
     /* Calculate pressure and apply LR correction if PPPM is used */
     calc_pres(fr->ePBC,parm->box,parm->ekin,parm->vir,parm->pres,
 	      (fr->eeltype==eelPPPM) ? ener[F_LR] : 0.0);
@@ -801,28 +797,11 @@ time_t do_md(FILE *log,t_commrec *cr,t_commrec *mcr,int nfile,t_filenm fnm[],
       step++;
   }
   /* End of main MD loop */
-  debug_gmx();
 
-  /* Dump the NODE time to the log file on each node */
-  if (PAR(cr)) {
-    double *ct,ctmax,ctsum;
-    
-    snew(ct,cr->nnodes);
-    ct[cr->nodeid] = node_time();
-    gmx_sumd(cr->nnodes,ct,cr);
-    ctmax = ct[0];
-    ctsum = ct[0];
-    for(i=1; (i<cr->nodeid); i++) {
-      ctmax = max(ctmax,ct[i]);
-      ctsum += ct[i];
-    }
-    ctsum /= cr->nnodes;
-    fprintf(log,"\nTotal NODE time on node %d: %g\n",cr->nodeid,ct[cr->nodeid]);
-    fprintf(log,"Average NODE time: %g\n",ctsum);
-    fprintf(log,"Load imbalance reduced performance to %3d%% of max\n",
-	    (int) (100.0*ctmax/ctsum));
-    sfree(ct);
-  }
+  /* Dump load balancing information */
+  print_load_balance(log,cr);
+  
+  /* Close a lot of files */
   if (MASTER(cr)) {
     print_ebin(fp_ene,FALSE,FALSE,FALSE,log,step,t,
 	       eprAVER,FALSE,mdebin,fcd,&(top->atoms));
@@ -835,8 +814,7 @@ time_t do_md(FILE *log,t_commrec *cr,t_commrec *mcr,int nfile,t_filenm fnm[],
     if (fp_dgdl)
       fclose(fp_dgdl);
   }
-  debug_gmx();
-
+  
   if (bShell) {
     fprintf(log,"Fraction of iterations that converged:           %.2f %%\n",
 	    (nconverged*100.0)/(parm->ir.nsteps+1));

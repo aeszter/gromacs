@@ -184,8 +184,7 @@ extern void nstop_cm(FILE *log,t_commrec *cr,
 
 extern void finish_run(FILE *log,t_commrec *cr,char *confout, t_nsborder *nsb,
 		       t_topology *top, t_parm *parm,t_nrnb nrnb[],
-		       double nodetime,double realtime,int step,
-		       bool bWriteStat);
+		       int step,bool bWriteStat,time_t start_t);
 
 extern void calc_dispcorr(FILE *log,int eDispCorr,t_forcerec *fr,int natoms,
 			  matrix box,tensor pres,tensor virial,real ener[]);
@@ -238,7 +237,8 @@ extern void init_parts(FILE *log,t_commrec *cr,
 		       rvec **x,rvec **v,t_mdatoms **mdatoms,
 		       t_nsborder *nsb,int list,
 		       bool *bParallelDummies,
-		       t_comm_dummies *dummycomm);
+		       t_comm_dummies *dummycomm,
+		       bool bSplit);
      /*
       * Loads the data for a simulation from the ring. Parameters, topology
       * coordinates, velocities, and masses are initialised equal to using

@@ -157,7 +157,7 @@ void init_parts(FILE *log,t_commrec *cr,
 		t_parm *parm,t_topology *top,
 		rvec **x,rvec **v,t_mdatoms **mdatoms,
 		t_nsborder *nsb,int list, bool *bParallelDummies,
-		t_comm_dummies *dummycomm)
+		t_comm_dummies *dummycomm,bool bSplit)
 {
   ld_data(cr->left,cr->right,parm,nsb,top,x,v);
   if (cr->nodeid != 0)
@@ -166,7 +166,8 @@ void init_parts(FILE *log,t_commrec *cr,
   /* Make sure the random seeds are different on each node */
   parm->ir.ld_seed += cr->nodeid;
 
-  mdsplit_top(log,top,cr,nsb,bParallelDummies,dummycomm);
+  if (bSplit)
+    mdsplit_top(log,top,cr,nsb,bParallelDummies,dummycomm);
 
   if (list) {
     if (list&LIST_SCALARS) 

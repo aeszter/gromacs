@@ -54,8 +54,6 @@ extern void f_calc_vir(FILE *log,int i0,int i1,rvec x[],rvec f[],tensor vir,
 		       t_graph *g,rvec shift_vec[]);
 /* Calculate virial taking periodicity into account */
 
-extern t_forcerec *mk_forcerec(void);
-
 extern void make_tables(FILE *fp,t_forcerec *fr,bool bVerbose,char *fn);
 /* Make tables for inner loops. When bVerbose the tables are printed
  * to .xvg files
@@ -63,18 +61,19 @@ extern void make_tables(FILE *fp,t_forcerec *fr,bool bVerbose,char *fn);
  
 extern void pr_forcerec(FILE *log,t_forcerec *fr,t_commrec *cr);
 
-extern void init_forcerec(FILE       *log,     
-			  t_forcerec *fr,   
-			  t_inputrec *ir,   
-			  t_topology *top,
-			  t_commrec  *cr,
-			  t_mdatoms  *mdatoms,
-			  t_nsborder *nsb,
-			  matrix     box,
-			  bool       bMolEpot,
-			  char       *tabfn,
-			  bool       bNoSolvOpt);
-/* The Force rec struct must be created with mk_forcerec 
+extern t_forcerec *init_forcerec(FILE       *log,     
+				 t_forcerec *fr,   
+				 t_inputrec *ir,   
+				 t_topology *top,
+				 t_commrec  *cr,
+				 t_mdatoms  *mdatoms,
+				 t_nsborder *nsb,
+				 matrix     box,
+				 bool       bMolEpot,
+				 char       *tabfn,
+				 bool       bNoSolvOpt,
+				 bool       bSepDVDL);
+/* If (fr == NULL) it will be allocated, it will anyway be returned.
  * The booleans have the following meaning:
  * bSetQ:    Copy the charges [ only necessary when they change ]
  * bMolEpot: Use the free energy stuff per molecule
