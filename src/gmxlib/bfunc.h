@@ -33,8 +33,8 @@
  *	Bcopy/Memcpy patch.
  *
 $Log$
-Revision 1.1  1997/11/03 16:08:02  spoel
-Initial revision
+Revision 1.1.1.1  1997/11/03 16:08:02  spoel
+Generated_by_makecvs
 
  * Revision 1.1  1993/08/30  23:26:46  manchek
  * Initial revision
