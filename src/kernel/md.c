@@ -471,6 +471,9 @@ time_t do_md(FILE *log,t_commrec *cr,t_commrec *mcr,int nfile,t_filenm fnm[],
     /* Stop Center of Mass motion */
     bStopCM = do_per_step(step,abs(parm->ir.nstcomm));
 
+    /* Distribute box variable */
+    distribute_box(cr,parm->box);
+    
     /* Copy back starting coordinates in case we're doing a forcefield scan */
     if (bFFscan) 
       copy_rvecs(nsb->natoms,xcopy,x);

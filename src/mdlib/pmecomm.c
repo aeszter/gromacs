@@ -29,7 +29,7 @@
  * And Hey:
  * GROup of MAchos and Cynical Suckers
  */
-static char *SRCID_pme_c = "$Id$";
+static char *SRCID_pmecomm_c = "$Id$";
 #include <stdio.h>
 #include <math.h>
 #include "typedefs.h"
@@ -178,7 +178,7 @@ static void send_to_real_nodes(t_commrec *cr,int n,rvec f[],int node_atoms[])
 
 void do_allpme(FILE *fp,t_commrec *cr,int natoms,
 	       t_groups *grps,t_inputrec *ir,t_nrnb nrnb[],
-	       t_forcerec *fr)
+	       t_forcerec *fr,t_nsborder *nsb)
 {
   int    i,j,nn,*node_atoms;
   rvec   *x,*f;
@@ -196,8 +196,8 @@ void do_allpme(FILE *fp,t_commrec *cr,int natoms,
   snew(node_atoms,cr->npme);
   init_nrnb(&mynrnb);
   for(i=0; (i<=ir->nsteps); i++) {
-    /* Update box */
     /* Write code here to update the box variable (not set by default) */
+    distribute_box(cr,box);
     
     nn = recv_from_real_nodes(cr,natoms,x,q,node_atoms);
   
@@ -209,13 +209,13 @@ void do_allpme(FILE *fp,t_commrec *cr,int natoms,
     for(i=0; (i<F_NRE); i++)
       ener[i]=0.0;
       
-    ener[F_LR] = do_pme(fp,FALSE,ir,nn,x,f,q,box,cr,nrnb,lr_vir,
+    ener[F_LR] = do_pme(fp,FALSE,ir,x,f,q,box,cr,nsb,nrnb,lr_vir,
 			fr->ewaldcoeff,FALSE);
     
     send_to_real_nodes(cr,nn,f,node_atoms);
     
     /* Communicate energies etc. */
-    global_stat(log,cr,ener,lr_vir,shake_vir,
+    global_stat(fp,cr,ener,lr_vir,shake_vir,
 		&(ir->opts),grps,&mynrnb,nrnb,vcm,&terminate);
     
   }

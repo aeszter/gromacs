@@ -661,3 +661,10 @@ void init_md(t_commrec *cr,t_inputrec *ir,tensor box,real *t,real *t0,
   debug_gmx();
 }
 
+void distribute_box(t_commrec *cr,matrix box)
+{
+#ifdef USE_MPI
+  if (PAR(cr))
+    gmx_broadcast(MPI_COMM_WORLD,sizeof(box),box,cr->npme);
+#endif
+}

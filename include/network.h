@@ -170,6 +170,12 @@ extern void gmx_sumf(int nr,float r[],t_commrec *cr);
 extern void gmx_sumd(int nr,double r[],t_commrec *cr);
 /* Calculate the global sum of an array of doubles */
 
+extern void gmx_broadcast(int to,int size,void *buf,int root);
+/* This routine broadcasts a datablock of size. The root indicates
+ * which process is the master. The master sends, and all (including master)
+ * receive the content of buf.
+ */
+
 extern void gmx_abort(int nodeid,int nnodes,int errorno);
 /* Abort the parallel run */
 

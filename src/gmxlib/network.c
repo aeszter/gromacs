@@ -438,3 +438,13 @@ void gmx_finalize(void)
   MPI_Finalize();
 #endif
 }
+
+void gmx_broadcast(int to,int size,void *buf,int root)
+{
+#ifndef USE_MPI
+  MYFATAL("gmx_broadcast");
+#else
+  MPI_Bcast(buf,size,MPI_BYTE,root,to);
+#endif
+}
+

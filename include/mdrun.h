@@ -280,7 +280,10 @@ extern void dynamic_load_balancing(bool bVerbose,t_commrec *cr,real capacity[],
 /* Perform load balancing, i.e. split the particles over processors
  * based on their coordinates in the "dimension" direction.
  */
-				   
+ 
+extern void distribute_box(t_commrec *cr,matrix box);
+/* This routine boradcasts the box variable */
+			   
 extern void mdrunner(t_commrec *cr,t_commrec *mcr,int nfile,t_filenm fnm[],
 		     bool bVerbose,bool bCompact,
 		     int nDlb,int nstepout,t_edsamyn *edyn,

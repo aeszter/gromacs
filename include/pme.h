@@ -58,6 +58,11 @@ extern real do_pme(FILE *log,       bool bVerbose,
  * If bGatherOnly is set, the energy from the last computation will be used, and 
  * the forces will be interpolated at the new positions. No new solving is done then.
  */
+ 
+extern void do_allpme(FILE *fp,t_commrec *cr,int natoms,
+		      t_groups *grps,t_inputrec *ir,t_nrnb nrnb[],
+		      t_forcerec *fr,t_nsborder *nsb);
+/* Special PME loop... */
 
 extern void sum_qgrid(t_commrec *cr,t_nsborder *nsb,t_fftgrid *grid,bool bForward);
 
