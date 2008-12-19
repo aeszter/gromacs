@@ -65,7 +65,7 @@ static void init_range_check()
 	  "energy seems reasonable before trying again.\n");
 }
 
-static void set_grid_sizes(matrix box,real rlist,
+static void set_grid_sizes(matrix box,rvec system_offset,real rlist,
 			   const gmx_domdec_t *dd,t_grid *grid,int ncg)
 {
   int  i,j;
@@ -95,7 +95,8 @@ static void set_grid_sizes(matrix box,real rlist,
   if (debug)
     fprintf(debug,"CG density %f ideal ns cell size %f\n",dens,1/inv_r_ideal);
 
-  clear_rvec(grid->cell_offset);
+  copy_rvec(system_offset,grid->cell_offset);
+	
   for(i=0; (i<DIM); i++) {
     bDD = dd && (dd->nc[i] > 1);
     if (!bDD) {
@@ -272,7 +273,7 @@ void set_grid_ncg(t_grid *grid,int ncg)
 }
 
 void grid_first(FILE *fplog,t_grid *grid,gmx_domdec_t *dd,
-		int ePBC,matrix box,real rlistlong,int ncg)
+		int ePBC,matrix box,rvec system_offset,real rlistlong,int ncg)
 {
   int    i,m;
   ivec   cx;
@@ -280,7 +281,7 @@ void grid_first(FILE *fplog,t_grid *grid,gmx_domdec_t *dd,
   /* Must do this every step because other routines may override it. */
   init_range_check();
 
-  set_grid_sizes(box,rlistlong,dd,grid,ncg);
+  set_grid_sizes(box,system_offset,rlistlong,dd,grid,ncg);
 
   grid->ncells = grid->n[XX]*grid->n[YY]*grid->n[ZZ];
 
@@ -439,15 +440,16 @@ void fill_grid(FILE *log,
     fprintf(debug,"Filling grid from %d to %d\n",cg0,cg1);
 
   /* We assume here that the charge group center of mass is always
-   * 0 <= cgcm < box
+   * 0 <= cgcm-box_offset < box
    * If not this will generate errors (SEGV). If you suspect this, turn on
    * DEBUG_PBC
    */
+   
   debug_gmx();
   if (dd == NULL) {
     for (cg=cg0; cg<cg1; cg++) {
       for(d=0; d<DIM; d++) {
-	ind[d] = cg_cm[cg][d]*n_box[d];
+	ind[d] = (cg_cm[cg][d]-box_offset[d])*n_box[d];
 	if (ind[d] == grid->n[d])
 	  ind[d]--;
       }

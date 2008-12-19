@@ -82,6 +82,7 @@
 #include "mvdata.h"
 #include "checkpoint.h"
 #include "mtop_util.h"
+#include "genborn.h"
 
 #ifdef GMX_MPI
 #include <mpi.h>
@@ -142,7 +143,8 @@ void mdrunner(FILE *fplog,t_commrec *cr,int nfile,t_filenm fnm[],
   bool       bReadRNG,bReadEkin;
   int        list;
   int        nsteps_done;
-	
+  gmx_genborn_t *born;
+
   snew(inputrec,1);
   snew(mtop,1);
   	
@@ -198,13 +200,7 @@ void mdrunner(FILE *fplog,t_commrec *cr,int nfile,t_filenm fnm[],
   
   if (DEFORM(*inputrec)) {
     /* Store the deform reference box before reading the checkpoint */
-    if (SIMMASTER(cr)) {
-      copy_mat(state->box,box);
-    }
-    if (PAR(cr)) {
-      gmx_bcast(sizeof(box),box,cr);
-    }
-    set_deform_reference_box(inputrec->init_step,box);
+    set_deform_reference_box(inputrec->init_step,state->box);
   }
 
   if (opt2bSet("-cpi",nfile,fnm)) 
@@ -385,6 +381,40 @@ void mdrunner(FILE *fplog,t_commrec *cr,int nfile,t_filenm fnm[],
 	gmx_fatal(FARGS,"Error %d initializing PME",status);
     }
   }
+
+  /* Initiate GB if necessary */
+  if(inputrec->implicit_solvent)
+    {
+
+      snew(born,1);
+      snew(born->gpol,top->atoms.nr);
+      snew(born->vsolv,top->atoms.nr);
+      snew(born->bRad,top->atoms.nr);
+      /* snew(born->bRadInvSq,top->atoms.nr); */
+      snew(born->drb,top->atoms.nr);
+      snew(born->des,top->atoms.nr);
+      snew(born->aes,top->atoms.nr);
+
+      snew(born->shct,top->atoms.nr);
+      snew(born->drobc,top->atoms.nr);
+
+      /* snew(born->asurf,top->atoms.nr); */                                                                                      
+      /* snew(born->dasurf,top->atoms.nr); */
+      snew(mdatoms->invsqrta,top->atoms.nr);
+      snew(mdatoms->dvda,top->atoms.nr);
+      snew(mdatoms->dadx,top->atoms.nr*top->atoms.nr);
+
+      snew(born->gpol_gromacs,top->atoms.nr);
+      snew(born->vsolv_gromacs,top->atoms.nr);
+      snew(born->bRad_gromacs,top->atoms.nr);
+
+      /* snew(born->asurf_gromacs,top->atoms.nr); */
+      /* snew(born->dasurf_gromacs,top->atoms.nr); */
+
+      snew(born->vs,top->atoms.nr);
+      snew(born->param, top->atoms.nr);
+    }
+
   
   if (integrator[inputrec->eI].func == do_md) {
     /* Turn on signal handling on all nodes */
@@ -429,6 +459,7 @@ void mdrunner(FILE *fplog,t_commrec *cr,int nfile,t_filenm fnm[],
 					    nstepout,inputrec,mtop,
 					    fcd,state,f,buf,
 					    mdatoms,nrnb,wcycle,ed,fr,
+					    born,
 					    repl_ex_nst,repl_ex_seed,
 					    cpt_period,max_hours,
 					    Flags,
@@ -478,7 +509,7 @@ time_t do_md(FILE *fplog,t_commrec *cr,int nfile,t_filenm fnm[],
 	     t_state *state_global,rvec f[],
 	     rvec buf[],t_mdatoms *mdatoms,
 	     t_nrnb *nrnb,gmx_wallcycle_t wcycle,
-	     gmx_edsam_t ed,t_forcerec *fr,
+	     gmx_edsam_t ed,t_forcerec *fr, gmx_genborn_t *born,
 	     int repl_ex_nst,int repl_ex_seed,
 	     real cpt_period,real max_hours,
 	     unsigned long Flags,
@@ -492,7 +523,7 @@ time_t do_md(FILE *fplog,t_commrec *cr,int nfile,t_filenm fnm[],
   double     t,t0,lam0;
   bool       bGStatEveryStep,bGStat,bCalcPres;
   bool       bNS,bSimAnn,bStopCM,bRerunMD,bNotLastFrame=FALSE,
-             bFirstStep,bStateFromTPX,bLastStep;
+             bFirstStep,bStateFromTPX,bLastStep,bBornRadii;
   bool       bNEMD,do_ene,do_log,do_verbose,bRerunWarnNoV=TRUE,
 	         bForceUpdate=FALSE,bX,bV,bF,bXTC,bCPT;
   bool       bMasterState;
@@ -621,6 +652,10 @@ time_t do_md(FILE *fplog,t_commrec *cr,int nfile,t_filenm fnm[],
 
   debug_gmx();
 
+  /* Initialise GB-stuff */
+  if(ir->implicit_solvent)
+    init_gb(cr,fr,born,top,state->x,mdatoms->nr, ir->rgbradii,ir->gb_algorithm);
+
   /* Check for polarizable models and flexible constraints */
   shellfc = init_shell_flexcon(fplog,
 			       top_global,n_flexible_constraints(constr),
@@ -674,10 +709,6 @@ time_t do_md(FILE *fplog,t_commrec *cr,int nfile,t_filenm fnm[],
 
     if (shellfc) {
       make_local_shells(cr,mdatoms,shellfc);
-    }
-
-    if (ir->pull) {
-      dd_make_local_pull_groups(NULL,ir->pull,mdatoms);
     }
   }
 
@@ -859,9 +890,9 @@ time_t do_md(FILE *fplog,t_commrec *cr,int nfile,t_filenm fnm[],
 
     bNotLastFrame = read_first_frame(&status,opt2fn("-rerun",nfile,fnm),
 				     &rerun_fr,TRX_NEED_X | TRX_READ_V);
-    if (rerun_fr.natoms != top_global->natoms)
+    if (rerun_fr.natoms != mdatoms->nr)
       gmx_fatal(FARGS,"Number of atoms in trajectory (%d) does not match the "
-		"run input file (%d)\n",rerun_fr.natoms,top_global->natoms);
+		  "run input file (%d)\n",rerun_fr.natoms,mdatoms->nr);
     if (ir->ePBC != epbcNONE) {
       if (!rerun_fr.bBox)
 	gmx_fatal(FARGS,"Rerun trajectory frame step %d time %f does not contain a box, while pbc is used",rerun_fr.step,rerun_fr.time);
@@ -1034,22 +1065,25 @@ time_t do_md(FILE *fplog,t_commrec *cr,int nfile,t_filenm fnm[],
       bLastStep = TRUE;
     }
 
+    /* Determine whether or not to update the Born radii if doing GB */
+    bBornRadii=bFirstStep;
+    if(ir->implicit_solvent && (step % ir->nstgbradii==0))
+    {
+	bBornRadii=TRUE;
+    }
+
     do_log = do_per_step(step,ir->nstlog) || bFirstStep || bLastStep;
     do_verbose = bVerbose && (step % stepout == 0 || bFirstStep || bLastStep);
 
-    if (bNS && !(bFirstStep && ir->bContinuation && !bRerunMD)) {
-      if (bRerunMD) {
-	bMasterState = TRUE;
-      } else {
-	bMasterState = FALSE;
-	/* Correct the new box if it is too skewed */
-	if (DYNAMIC_BOX(*ir)) {
-	  if (correct_box(fplog,step,state->box,graph))
-	    bMasterState = TRUE;
-	}
-	if (DOMAINDECOMP(cr) && bMasterState)
-	  dd_collect_state(cr->dd,state,state_global);
+    if (bNS && !(bFirstStep && ir->bContinuation)) {
+      bMasterState = FALSE;
+      /* Correct the new box if it is too skewed */
+      if (DYNAMIC_BOX(*ir) && !bRerunMD) {
+	if (correct_box(fplog,step,state->box,graph))
+	  bMasterState = TRUE;
       }
+      if (DOMAINDECOMP(cr) && bMasterState)
+	dd_collect_state(cr->dd,state,state_global);
       
       if (DOMAINDECOMP(cr)) {
 	/* Repartition the domain decomposition */
@@ -1149,7 +1183,7 @@ time_t do_md(FILE *fplog,t_commrec *cr,int nfile,t_filenm fnm[],
 	       state->box,state->x,&state->hist,
 	       f,buf,force_vir,mdatoms,enerd,fcd,
 	       state->lambda,graph,
-	       fr,vsite,mu_tot,t,fp_field,ed,
+	       fr,vsite,mu_tot,t,fp_field,ed,born,bBornRadii,
 	       GMX_FORCE_STATECHANGED | (bNS ? GMX_FORCE_NS : 0) |
 	       GMX_FORCE_ALLFORCES | (bCalcPres ? GMX_FORCE_VIRIAL : 0));
     }

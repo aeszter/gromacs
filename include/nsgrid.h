@@ -47,7 +47,7 @@ extern void done_grid(t_grid *grid);
 extern void set_grid_ncg(t_grid *grid,int ncg);
 
 extern void grid_first(FILE *log,t_grid *grid,gmx_domdec_t *dd,
-		       int ePBC,matrix box,real rlong,int ncg);
+		       int ePBC,matrix box,rvec system_offset,real rlong,int ncg);
 
 extern void fill_grid(FILE *log,
 		      gmx_domdec_t *dd,

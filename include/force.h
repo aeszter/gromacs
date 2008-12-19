@@ -47,6 +47,7 @@
 #include "network.h"
 #include "tgroup.h"
 #include "vsite.h"
+#include "genborn.h"
 
 static char *sepdvdlformat="  %-30s V %12.5e  dVdl %12.5e\n";
 
@@ -170,6 +171,7 @@ extern void do_force(FILE *log,t_commrec *cr,
 		     real lambda,t_graph *graph,
 		     t_forcerec *fr,gmx_vsite_t *vsite,rvec mu_tot,
 		     double t,FILE *field,gmx_edsam_t ed,
+		     gmx_genborn_t *born, bool bBornRadii,
 		     int flags);
 /* Communicate coordinates (if parallel).
  * Do neighbor searching (if necessary).
@@ -215,6 +217,10 @@ extern void do_force_lowlevel(FILE         *fplog,
 			      rvec         f[],    
 			      gmx_enerdata_t *enerd,
 			      t_fcdata     *fcd,
+			      t_atoms      *atoms,
+			      gmx_genborn_t *born,
+			      t_atomtypes  *atype,
+			      bool         bBornRadii,
 			      matrix       box,
 			      real         lambda,
 			      t_graph      *graph,

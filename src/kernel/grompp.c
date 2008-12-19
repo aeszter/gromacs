@@ -78,6 +78,7 @@
 #include "gpp_atomtype.h"
 #include "gpp_tomorse.h"
 #include "mtop_util.h"
+#include "genborn.h"
 
 static int rm_interactions(int ifunc,int nrmols,t_molinfo mols[])
 {
@@ -286,14 +287,19 @@ new_status(char *topfile,char *topppfile,char *confin,
   t_atoms     *confat;
   int         mb,mbs,i,nrmols,nmismatch;
   char        buf[STRLEN];
+  bool        bGB=FALSE;
 
   init_mtop(sys);
+
+  /* Set boolean for GB */
+  if(ir->implicit_solvent)
+    bGB=TRUE;
   
   /* TOPOLOGY processing */
   sys->name = do_top(bVerbose,topfile,topppfile,opts,bZero,&(sys->symtab),
 		     plist,comb,reppow,fudgeQQ,
 		     atype,&nrmols,&molinfo,ir,
-		     &nmolblock,&molblock);
+		     &nmolblock,&molblock,bGB);
   
   sys->nmolblock = 0;
   snew(sys->molblock,nmolblock);
@@ -622,32 +628,20 @@ static void set_wall_atomtype(t_atomtype at,t_gromppopts *opts,
 
 static int count_constraints(gmx_mtop_t *mtop,t_molinfo *mi)
 {
-  int count,count_mol,i,mb;
+  int count,i,mb;
   gmx_molblock_t *molb;
   t_params *plist;
-  char buf[STRLEN];
 
   count = 0;
   for(mb=0; mb<mtop->nmolblock; mb++) {
-    count_mol = 0;
     molb  = &mtop->molblock[mb];
     plist = mi[molb->type].plist;
     for(i=0; i<F_NRE; i++) {
       if (i == F_SETTLE)
-	count_mol += 3*plist[i].nr;
+	count += molb->nmol*3*plist[i].nr;
       else if (interaction_function[i].flags & IF_CONSTRAINT)
-	count_mol += plist[i].nr;
+	count += molb->nmol*plist[i].nr;
     }
-    printf("nat %d count_mol %d\n",mi[molb->type].atoms.nr,count_mol);
-    if (count_mol > mi[molb->type].atoms.nr*3 - 6) {
-      sprintf(buf,
-	      "Molecule type '%s' has %d constraints.\n"
-	      "For stability and efficiency there should not be more constraints than internal number of degrees of freedom: %d*3 - 6 = %d.\n",
-	      *mi[molb->type].name,count_mol,
-	      mi[molb->type].atoms.nr,mi[molb->type].atoms.nr*3-6);
-      warning(buf);
-    }
-    count += molb->nmol*count_mol;
   }
 
   return count;
@@ -750,9 +744,11 @@ int main (int argc, char *argv[])
   char         fn[STRLEN],fnB[STRLEN],*mdparin;
   int          nerror,ntype;
   bool         bNeedVel,bGenVel;
-  bool         have_radius,have_vol,have_surftens;
+  bool         have_radius,have_vol,have_surftens,have_gb_radius,have_S_hct;
   bool         have_atomnumber;
-  
+  t_params     *gb_plist;
+  gmx_genborn_t *born;
+
   t_filenm fnm[] = {
     { efMDP, NULL,  NULL,        ffOPTRD },
     { efMDP, "-po", "mdout",     ffWRITE },
@@ -853,14 +849,31 @@ int main (int argc, char *argv[])
     }
   }
 
-  /* If we are doing GBSA, check that we got the parameters we need */
-  have_radius=have_vol=have_surftens=TRUE;
-  ntype = get_atomtype_ntypes(atype);
-  for(i=0; (i<ntype); i++) {
-    have_radius   = have_radius && (get_atomtype_radius(i,atype) > 0);
-    have_vol      = have_vol && (get_atomtype_vol(i,atype) > 0);
-    have_surftens = have_surftens && (get_atomtype_surftens(i,atype) >= 0);
+  /* If we are doing GBSA, check that we got the parameters we need                                                            
+   * This checking is to see if there are GBSA paratmeters for all                                                             
+   * atoms in the force field. To go around this for testing purposes                                                          
+   * comment out the nerror++ counter temporarliy                                                                              
+   */
+  have_radius=have_vol=have_surftens=have_gb_radius=have_shct=TRUE;
+  for(i=0;i<atype->nr;i++) {
+    have_radius=have_radius && (atype->radius[i]>0);
+    have_vol=have_vol && (atype->vol[i]>0);
+    have_surftens=have_surftens && (atype->surftens[i]>=0);
+    have_gb_radius=have_gb_radius && (atype->gb_radius[i]>0);
+    have_shct=have_shct && (atype->shct[i]>0);
   }
+  if(!have_radius && ir->coulombtype==eelGB) {
+    fprintf(stderr,"Can't do GB electrostatics; the forcefield is missing values for\n"
+	    "atomtype radii, or they might be zero\n.");
+    /* nerror++; */
+  }
+  /*
+  if(!have_surftens && ir->implicit_solvent!=eisNO) {
+    fprintf(stderr,"Can't do implicit solvent; the forcefield is missing values\n"
+	    " for atomtype surface tension\n.");
+    nerror++;                                                                                                                
+  }
+  */
   
   /* If we are doing QM/MM, check that we got the atom numbers */
   have_atomnumber = TRUE;
@@ -906,6 +919,16 @@ int main (int argc, char *argv[])
 	       ir->refcoord_scaling,ir->ePBC,
 	       ir->posres_com,ir->posres_comB);
   }
+
+  if(ir->implicit_solvent)
+  {
+      printf("Constructing Generalized Born topology...\n");
+      snew(gb_plist,1);
+      init_gb_plist(gb_plist);
+      snew(born,1);
+      generate_gb_topology(msys.plist,&sys->idef,atype,sys->atoms,sys->atoms.nr,gb_plist,born);
+  }
+
   
   nvsite = 0;
   /* set parameters for virtual site construction (not for vsiten) */
@@ -939,6 +962,10 @@ int main (int argc, char *argv[])
   
   if (debug)
     pr_symtab(debug,0,"After convert_params",&sys->symtab);
+
+  /* Convert GB parameters to idef */
+  if(ir->implicit_solvent)
+    convert_gb_params(&sys->idef, F_GB, sys->idef.ntypes, gb_plist,born);
 
   /* set ptype to VSite for virtual sites */
   for(mt=0; mt<sys->nmoltype; mt++) {

@@ -278,7 +278,12 @@ void init_neighbor_list(FILE *log,t_forcerec *fr,int homenr)
    }  
 
    /* Determine the values for icoul/ivdw. */
-   if (fr->bcoultab)
+   /* Start with GB */
+   if(fr->eeltype==eelGB)
+   {
+       icoul=4;
+   }
+   else if (fr->bcoultab)
    {
        icoul = 3;
    }
@@ -355,7 +360,18 @@ void init_neighbor_list(FILE *log,t_forcerec *fr,int homenr)
        init_nblist(&fr->QMMMlist_sr,&fr->QMMMlist_lr,
                    maxsr,maxlr,0,icoul,FALSE,enlistATOM_ATOM);
    }
-   
+
+   /* GB neighborlist */
+   if(fr->eeltype==eelGB)
+   {
+       /*                                                                     
+          maxlr=maxsr;                                                          
+          init_nblist(&fr->gblist_sr,&fr->gblist_lr,maxsr,maxlr,                
+                      0,icoul,FALSE,NULL,enlistATOM);                                                                                             
+       */
+   }
+
+
 }
 
  static void reset_nblist(t_nblist *nl)
@@ -390,6 +406,13 @@ static void reset_neighbor_list(t_forcerec *fr,bool bLR,int nls,int eNL)
         { 
             /* only reset the short-range nblist */
             reset_nblist(&(fr->QMMMlist_sr));
+        }
+        if(fr->eeltype==eelGB)
+        {
+            /* only reset the short-range nblist                           
+             * (do we need to reset at all?)                               
+             */
+            /* reset_nblist(&(fr->gblist_sr)); */
         }
     }
 }
@@ -2343,6 +2366,7 @@ void init_ns(FILE *fplog,const t_commrec *cr,
     }
 }
 
+			 
 int search_neighbours(FILE *log,t_forcerec *fr,
                       rvec x[],matrix box,
                       gmx_localtop_t *top,
@@ -2364,13 +2388,44 @@ int search_neighbours(FILE *log,t_forcerec *fr,
     int      cg_start,cg_end,start,end;
     gmx_ns_t *ns;
     t_grid   *grid;
-    
+	rvec     cgcm_min,cgxm_max,system_offset;
+	
     ns = &fr->ns;
 
     /* Set some local variables */
     bGrid = fr->bGrid;
     ngid = groups->grps[egcENER].nr;
     
+	clear_rvec(system_offset);
+	if(fr->ePBC != epbcXYZ)
+	{
+		clear_rvec(cgcm_min);
+		clear_rvec(cgcm_max);
+		for(i=0;i<cgs->nr;i++)
+		{
+			for(d=0;d<DIM;d++)
+			{
+				cgcm_max[d] = max(cgcm_max[d],fr->cg_cm[i][d]);
+				cgcm_min[d] = min(cgcm_min[d],fr->cg_cm[i][d]);
+			}
+		}
+		if(fr->ePBC==epbcNONE)
+		{
+			/* It is important that no coordinates ever fall outside the box */
+			box[X][X] = (cgcm_max[X]-cgcm_min[X]) * (1.0+GMX_REAL_EPS);
+			box[Y][Y] = (cgcm_max[Y]-cgcm_min[Y]) * (1.0+GMX_REAL_EPS);
+			box[Z][Z] = (cgcm_max[Z]-cgcm_min[Z]) * (1.0+GMX_REAL_EPS);
+			system_offset[X] = cgcm_min[X] - GMX_REAL_EPS*fabs(cgcm_min[X]);
+			system_offset[Y] = cgcm_min[Y] - GMX_REAL_EPS*fabs(cgcm_min[Y]); 
+			system_offset[Z] = cgcm_min[Z] - GMX_REAL_EPS*fabs(cgcm_min[Z]);
+		}
+		else if(fr->ePBC=epbcXY)
+		{
+			box[Z][Z] = (cgcm_max[Z]-cgcm_min[Z]);
+			system_offset[Z] = cgcm_min[Z];			
+		}		
+	}
+	
     for(m=0; (m<DIM); m++)
     {
         box_size[m] = box[m][m];
@@ -2401,11 +2456,12 @@ int search_neighbours(FILE *log,t_forcerec *fr,
     
     if (bGrid && bFillGrid)
     {
+		
         grid = ns->grid;
         bFilledHome = (DOMAINDECOMP(cr) && dd_filled_nsgrid_home(cr->dd));
         if (!bFilledHome)
         {
-            grid_first(log,grid,cr->dd,fr->ePBC,box,fr->rlistlong,cgs->nr);
+            grid_first(log,grid,cr->dd,fr->ePBC,box,system_offset,fr->rlistlong,cgs->nr);
         }
         else
         {

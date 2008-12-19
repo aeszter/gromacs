@@ -164,7 +164,11 @@ enum {
 
 /* Algorithms for calculating GB radii */
 enum { 
-  egbSTILL, egbOBC, egbNR 
+  egbSTILL, egbHCT, egbOBC, egbNR 
+};
+
+enum {
+  esaNO, esaAPPROX, esaSTILL, esaNR
 };
 
 /* Wall types */

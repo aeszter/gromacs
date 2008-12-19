@@ -7582,7 +7582,7 @@ void dd_partition_system(FILE            *fplog,
     int  i,j,n,cg0=0,ncg_home_old=-1,nat_f_novirsum;
     bool bCheckDLB,bTurnOnDLB,bLogLoad,bRedist,bSortCG;
     ivec ncells_old,np;
-    
+	
     dd = cr->dd;
     comm = dd->comm;
 

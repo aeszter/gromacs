@@ -150,8 +150,8 @@ typedef struct {
   int nstfout;		/* id. for F					*/
   int nstenergy;	/* number of steps after which energies printed */
   int nstxtcout;	/* id. for compressed trj (.xtc)		*/
-  double init_t;	/* initial time (ps) 				*/
-  double delta_t;	/* time step (ps)				*/
+  real init_t;		/* initial time (ps) 				*/
+  real delta_t;		/* time step (ps)				*/
   real xtcprec;         /* precision of xtc file                        */
   int  nkx,nky,nkz;     /* number of k vectors in each spatial dimension*/
                         /* for fourier methods for long range electrost.*/
@@ -190,17 +190,18 @@ typedef struct {
   real gb_obc_alpha;    /* 1st scaling factor for Bashford-Case GB      */
   real gb_obc_beta;     /* 2nd scaling factor for Bashford-Case GB      */
   real gb_obc_gamma;    /* 3rd scaling factor for Bashford-Case GB      */
-  real sa_surface_tension; /* Energy factor for SA part of GBSA */
+  real sa_algorithm;    /* Algorithm for SA part of GBSA                */
+  int  sa_surface_tension; /* Energy factor for SA part of GBSA */
   int  vdwtype;         /* Type of Van der Waals treatment              */
   real rvdw_switch;     /* Van der Waals switch range start (nm)        */
-  real rvdw;		    /* Van der Waals cutoff (nm)		        */
+  real rvdw;		    /* Van der Waals cutoff (nm)	        */
   int  eDispCorr;       /* Perform Long range dispersion corrections    */
   real tabext;          /* Extension of the table beyond the cut-off,   *
 		 	             * as well as the table length for 1-4 interac. */
   real shake_tol;	/* tolerance for shake				*/
   int  efep;   		/* free energy interpolation no/yes		*/
-  double init_lambda;	/* initial value for perturbation variable	*/
-  double delta_lambda;	/* change of lambda per time step (1/dt)	*/
+  real init_lambda;	/* initial value for perturbation variable	*/
+  real delta_lambda;	/* change of lambda per time step (1/dt)	*/
   real sc_alpha;        /* free energy soft-core parameter              */
   int  sc_power;        /* lambda power for soft-core interactions      */
   real sc_sigma;        /* free energy soft-core sigma when c6 or c12=0 */

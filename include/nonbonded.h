@@ -41,6 +41,7 @@
 #include "pbc.h"
 #include "network.h"
 #include "tgroup.h"
+#include "genborn.h"
 
 void
 gmx_setup_kernels(FILE *fplog);
@@ -50,6 +51,7 @@ do_nonbonded(t_commrec *cr,t_forcerec *fr,
              rvec x[],rvec f[],t_mdatoms *md,
              real egnb[],real egcoul[],rvec box_size,
              t_nrnb *nrnb,real lambda,real *dvdlambda,
+	     gmx_genborn_t *born,
              bool bLR,int nls,int eNL,bool bDoForces);
 
 /* Calculate VdW/charge pair interactions (usually 1-4 interactions).

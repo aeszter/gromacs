@@ -92,6 +92,9 @@ typedef struct {
   real         *radius;         /* GBSA radius for each atomtype        */
   real         *vol;            /* GBSA efective volume for each atomtype   */
   real         *surftens;       /* implicit solvent surftens for each atomtype */
+  real         *gb_radius;      /* GB radius for each atom type */
+  real         *S_hct;           /* Overlap factors for HCT/OBC GB models */
+
   int          *atomnumber;     /* Atomic number, used for QM/MM */
 } t_atomtypes;
 
