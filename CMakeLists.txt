@@ -4,6 +4,12 @@ project(Gromacs)
 include(Dart)
 mark_as_advanced(DART_ROOT)
 
+IF(BUILD_TESTING)
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fprofile-arcs -ftest-coverage")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fprofile-arcs -ftest-coverage")
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fprofile-arcs -ftest-coverage")
+ENDIF (BUILD_TESTING)
+
 # PROJECT_VERSION should have the following structure: 
 # VERSION-dev[-SUFFIX] where the VERSION should have the for: vMajor.vMinor.vPatch
 #
