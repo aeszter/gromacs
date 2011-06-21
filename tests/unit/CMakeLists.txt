@@ -1,3 +1,3 @@
 include ( TestHarness.cmake )
 
-subdirs( mdlib gmxlib )
+subdirs( libgromacs )

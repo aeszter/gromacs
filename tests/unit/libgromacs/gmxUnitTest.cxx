@@ -1,6 +1,6 @@
 #include "gmxTestHarness.h"
 
-TEST(mdTests,Basics)
+TEST(gmxTests,Basics)
 {
   ASSERT_TRUE ( true );
 }
