@@ -473,6 +473,9 @@ endif()
 
 if (GMX_DLOPEN)
     list(APPEND GMX_EXTRA_LIBRARIES ${CMAKE_DL_LIBS})
+    set(PKG_DL_LIBS "-l${CMAKE_DL_LIBS}")
+else(GMX_DLOPEN)
+    set(PKG_DL_LIBS)
 endif (GMX_DLOPEN)
 
 find_package(GTest)
