@@ -1,6 +1,7 @@
 #include "gmxTestHarness.h"
 extern "C" {
 #include "gmx_matrix.h"
+#include "basicmath.h"
 }
 
 TEST(MatrixTest, MultiplyInverse)
@@ -46,4 +47,19 @@ TEST(MatrixTest, MultiplyInverse)
   free_matrix (m2, 3);
   free_matrix (product, 3);
 
+}
+
+TEST (BasicMathTest, NumZero)
+{
+  volatile double a;
+
+  ASSERT_TRUE (gmx_numzero (0.0));
+  ASSERT_TRUE (gmx_numzero (-0.0));
+  ASSERT_FALSE (gmx_numzero (1.0));
+  ASSERT_FALSE (gmx_numzero (-1.0));
+  ASSERT_FALSE (gmx_numzero (0.1));
+  ASSERT_FALSE (gmx_numzero (-0.1));
+
+  a = 1.0 / 3;
+  ASSERT_TRUE (gmx_numzero (3*a - 1));
 }
